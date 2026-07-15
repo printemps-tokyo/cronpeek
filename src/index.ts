@@ -21,4 +21,4 @@ export type { Run } from "./schedule.js";
 export { describeSpec, weekdayLabel } from "./describe.js";
 export type { FieldExplanation } from "./describe.js";
 
-export { renderMarkdown, renderJson, formatRun } from "./render.js";
+export { renderMarkdown, renderJson, formatRun, formatDelta } from "./render.js";

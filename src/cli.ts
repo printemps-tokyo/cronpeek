@@ -130,7 +130,7 @@ async function main(): Promise<number> {
   const output =
     format === "json"
       ? renderJson(expression, spec, timeZone, runs)
-      : renderMarkdown(expression, spec, timeZone, runs, count);
+      : renderMarkdown(expression, spec, timeZone, runs, count, fromMs);
 
   if (values.output) {
     try {
