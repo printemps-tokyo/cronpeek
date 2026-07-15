@@ -7,6 +7,7 @@ import { nextRuns } from "./schedule.js";
 import { renderJson, renderMarkdown } from "./render.js";
 import { resolveFormat, type OutputFormat } from "./options.js";
 import { assertTimeZone, systemTimeZone, zonedToInstant } from "./zoned.js";
+import { usageError } from "./usage.js";
 
 const HELP = `cronpeek - explain a cron expression and show its next run times
 
@@ -90,7 +91,7 @@ async function main(): Promise<number> {
     values = parsed.values;
     positionals = parsed.positionals;
   } catch (err) {
-    process.stderr.write(`error: ${(err as Error).message}\n`);
+    process.stderr.write(usageError(err, "cronpeek"));
     return 1;
   }
 
