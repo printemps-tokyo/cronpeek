@@ -5,6 +5,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { parseCron } from "./parse.js";
 import { nextRuns } from "./schedule.js";
 import { renderJson, renderMarkdown } from "./render.js";
+import { resolveFormat, type OutputFormat } from "./options.js";
 import { assertTimeZone, systemTimeZone, zonedToInstant } from "./zoned.js";
 
 const HELP = `cronpeek - explain a cron expression and show its next run times
@@ -21,6 +22,7 @@ Options:
   --from <when>       Compute runs after this local time (YYYY-MM-DDTHH:MM)
                       interpreted in --tz (default: now)
   --format <md|json>  Output format (default: md)
+  --json              Shorthand for --format json
   -o, --output <file> Write to a file (default: stdout)
   -h, --help          Show this help
   -v, --version       Show version
@@ -81,6 +83,7 @@ async function main(): Promise<number> {
         tz: { type: "string" },
         from: { type: "string" },
         format: { type: "string" },
+        json: { type: "boolean" },
         output: { type: "string", short: "o" },
       },
     });
@@ -103,9 +106,11 @@ async function main(): Promise<number> {
     process.stderr.write("error: --next must be a positive integer\n");
     return 1;
   }
-  const format = values.format ?? "md";
-  if (format !== "md" && format !== "json") {
-    process.stderr.write("error: --format must be md or json\n");
+  let format: OutputFormat;
+  try {
+    format = resolveFormat(values.format, values.json ?? false);
+  } catch (err) {
+    process.stderr.write(`error: ${(err as Error).message}\n`);
     return 1;
   }
 

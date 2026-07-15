@@ -54,7 +54,7 @@ Then run `cronpeek …` (after `npm link`), or `node dist/cli.js …` from the c
 cronpeek "*/15 9-18 * * 1-5"          # explain + next 5 runs (local time)
 cronpeek --next 10 "0 2 * * *"        # next 10 runs
 cronpeek --tz Asia/Tokyo "30 2 * * 0" # in a specific timezone
-cronpeek "@daily" --format json       # machine-readable
+cronpeek "@daily" --json              # machine-readable (same as --format json)
 cronpeek --from 2026-06-22T00:00 "0 9 * * 1"  # runs after a given time
 ```
 
@@ -65,6 +65,7 @@ cronpeek --from 2026-06-22T00:00 "0 9 * * 1"  # runs after a given time
 | `--tz <zone>` | IANA timezone (e.g. `Asia/Tokyo`) | system timezone |
 | `--from <when>` | Compute runs after this local time (`YYYY-MM-DDTHH:MM`) | now |
 | `--format <md\|json>` | Output format | `md` |
+| `--json` | Shorthand for `--format json` | — |
 | `-o, --output <file>` | Write to a file | stdout |
 
 ## Supported syntax
