@@ -33,7 +33,7 @@ It is fully offline and has no runtime dependencies.
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js >= 22
 
 ## Install
 
