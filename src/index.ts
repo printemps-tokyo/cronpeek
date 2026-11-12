@@ -22,3 +22,6 @@ export { describeSpec, weekdayLabel } from "./describe.js";
 export type { FieldExplanation } from "./describe.js";
 
 export { renderMarkdown, renderJson, formatRun, formatDelta } from "./render.js";
+export { cronFromText } from "./text.js";
+export { toSystemdCalendar } from "./systemd.js";
+export { workflowSchedules, shortestGapMinutes, type WorkflowSchedule } from "./workflow.js";

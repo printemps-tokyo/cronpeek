@@ -56,6 +56,10 @@ cronpeek --next 10 "0 2 * * *"        # next 10 runs
 cronpeek --tz Asia/Tokyo "30 2 * * 0" # in a specific timezone
 cronpeek "@daily" --json              # machine-readable (same as --format json)
 cronpeek --from 2026-06-22T00:00 "0 9 * * 1"  # runs after a given time
+cronpeek --text "every weekday at 9:30"         # a phrase -> 30 9 * * 1-5
+cronpeek --text "毎週月曜と木曜 10時"            # Japanese too -> 0 10 * * 1,4
+cronpeek --systemd "*/15 9-18 * * 1-5"          # also as systemd OnCalendar=
+cronpeek --workflow .github/workflows           # every schedule: in your workflows
 ```
 
 | Option | Description | Default |
@@ -67,6 +71,38 @@ cronpeek --from 2026-06-22T00:00 "0 9 * * 1"  # runs after a given time
 | `--format <md\|json>` | Output format | `md` |
 | `--json` | Shorthand for `--format json` | — |
 | `-o, --output <file>` | Write to a file | stdout |
+| `--text` | Read the argument as a schedule phrase and turn it into cron | off |
+| `--systemd` | Also print the expression as systemd `OnCalendar=` lines | off |
+| `--workflow <path>` | Explain the `on.schedule` entries of a GitHub Actions workflow file, or of every `.yml`/`.yaml` in a folder | — |
+
+### From a phrase
+
+`--text` knows a small grammar and refuses anything else rather than guess:
+`every minute`, `every 15 minutes`, `every hour [at :20]`, `every 6 hours`,
+`daily`, `every day at 7am`, `every day at 9 and 18`, `every weekday at 9:30`,
+`weekends at noon`, `every monday and thursday at 10am`, `on the 1st at 9:00`,
+`monthly on day 15 at midnight`; and in Japanese `毎分`, `5分ごと`, `毎時30分`,
+`3時間おき`, `毎日 9時`, `毎日9時半`, `平日 午後6時`, `土日 10時`,
+`毎週月曜と木曜 10時`, `毎月1日 午前9時`, `毎日 9時、18時`. Several times must
+share their minute (cron has one minute field per line).
+
+### systemd timers
+
+`--systemd` writes the schedule as `OnCalendar=` values (systemd.time(7)): the
+matched values as lists and `a..b` ranges, weekdays Monday first, with the
+`--tz` zone. Cron runs on a day when the day of the month or the weekday
+matches (if both are restricted), while systemd needs both, so such a schedule
+becomes two `OnCalendar=` lines, which a timer runs at either. CI checks the
+conversion: for a set of expressions, the next runs `systemd-analyze calendar`
+computes must equal cronpeek's.
+
+### GitHub Actions
+
+`--workflow` reads `- cron:` entries (and an entry's `timezone:`) from workflow
+YAML with a line-based reader, not a full YAML parser, and explains each in UTC
+(GitHub's default) or the entry's time zone. A schedule whose runs come less
+than 5 minutes apart is flagged: GitHub runs scheduled workflows at most once
+every 5 minutes.
 
 ## Supported syntax
 

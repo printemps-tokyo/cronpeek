@@ -8,6 +8,11 @@ import { renderJson, renderMarkdown } from "./render.js";
 import { resolveFormat, type OutputFormat } from "./options.js";
 import { assertTimeZone, systemTimeZone, zonedToInstant } from "./zoned.js";
 import { usageError } from "./usage.js";
+import { cronFromText } from "./text.js";
+import { toSystemdCalendar } from "./systemd.js";
+import { shortestGapMinutes, workflowSchedules } from "./workflow.js";
+import { readdir, stat } from "node:fs/promises";
+import { join } from "node:path";
 
 const HELP = `cronpeek - explain a cron expression and show its next run times
 
@@ -25,6 +30,12 @@ Options:
   --format <md|json>  Output format (default: md)
   --json              Shorthand for --format json
   -o, --output <file> Write to a file (default: stdout)
+  --text              Read the argument as a phrase ("every weekday at 9:30",
+                      "毎週月曜 10時") and turn it into a cron expression
+  --systemd           Also print the expression as systemd OnCalendar= lines
+  --workflow <path>   Explain the schedules of a GitHub Actions workflow file,
+                      or of every workflow in a folder (in UTC, or the
+                      entry's timezone:)
   -h, --help          Show this help
   -v, --version       Show version
 
@@ -32,6 +43,9 @@ Examples:
   cronpeek "*/15 9-18 * * 1-5"
   cronpeek --next 10 --tz Asia/Tokyo "0 2 * * 0"
   cronpeek "@daily" --json
+  cronpeek --text "every monday and thursday at 10am"
+  cronpeek --systemd "*/15 9-18 * * 1-5"
+  cronpeek --workflow .github/workflows
 `;
 
 async function readVersion(): Promise<string> {
@@ -86,19 +100,15 @@ async function main(): Promise<number> {
         format: { type: "string" },
         json: { type: "boolean" },
         output: { type: "string", short: "o" },
+        text: { type: "boolean" },
+        systemd: { type: "boolean" },
+        workflow: { type: "string" },
       },
     });
     values = parsed.values;
     positionals = parsed.positionals;
   } catch (err) {
     process.stderr.write(usageError(err, "cronpeek"));
-    return 1;
-  }
-
-  // The expression may arrive as one quoted positional or five bare tokens.
-  const expression = positionals.join(" ").trim();
-  if (expression === "") {
-    process.stderr.write('error: a cron expression is required (quote it, e.g. "*/5 * * * *")\n\n' + HELP);
     return 1;
   }
 
@@ -115,23 +125,76 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  const timeZone = values.tz ?? systemTimeZone();
-  let fromMs: number;
-  let spec;
+  // One cron expression explained: Markdown text, or a JSON object.
+  const explain = (
+    expression: string,
+    timeZone: string,
+    fromMs: number,
+  ): { md: string; json: Record<string, unknown> } => {
+    const spec = parseCron(expression);
+    const runs = nextRuns(spec, fromMs, count, timeZone);
+    let md = renderMarkdown(expression, spec, timeZone, runs, count, fromMs);
+    const json = JSON.parse(renderJson(expression, spec, timeZone, runs)) as Record<string, unknown>;
+    if (values.systemd) {
+      const lines = toSystemdCalendar(spec, timeZone);
+      md += `\n## systemd\n\n\`\`\`ini\n${lines.map((l) => `OnCalendar=${l}`).join("\n")}\n\`\`\`\n`;
+      json.systemd = lines;
+    }
+    return { md, json };
+  };
+
+  let output: string;
   try {
+    const timeZone = values.tz ?? systemTimeZone();
     assertTimeZone(timeZone);
-    fromMs = values.from ? parseFrom(values.from, timeZone) : Date.now();
-    spec = parseCron(expression);
+    const fromMs = values.from ? parseFrom(values.from, timeZone) : Date.now();
+
+    if (values.workflow !== undefined) {
+      if (positionals.length > 0 || values.text) {
+        throw new Error("--workflow takes no expression or --text");
+      }
+      const files = await workflowFiles(values.workflow);
+      const mdParts: string[] = [];
+      const jsonParts: Record<string, unknown>[] = [];
+      for (const file of files) {
+        const text = await readFile(file, "utf8");
+        for (const entry of workflowSchedules(text)) {
+          // GitHub runs a schedule in UTC unless the entry names a timezone.
+          const tz = entry.timeZone ?? "UTC";
+          assertTimeZone(tz);
+          const one = explain(entry.cron, tz, fromMs);
+          const spec = parseCron(entry.cron);
+          const gap = shortestGapMinutes(nextRuns(spec, fromMs, 20, tz).map((r) => r.ms));
+          const warning =
+            gap !== undefined && gap < 5
+              ? "GitHub runs scheduled workflows at most once every 5 minutes, so some of these runs will not happen."
+              : undefined;
+          mdParts.push(
+            `<!-- ${file}:${entry.line} -->\n${one.md}${warning ? `\n> ${warning}\n` : ""}`,
+          );
+          jsonParts.push({ file, line: entry.line, ...one.json, ...(warning ? { warning } : {}) });
+        }
+      }
+      if (jsonParts.length === 0) throw new Error(`no on.schedule cron entries in ${values.workflow}`);
+      output = format === "json" ? JSON.stringify(jsonParts, null, 2) + "\n" : mdParts.join("\n");
+    } else {
+      // The expression may arrive as one quoted positional or five bare tokens.
+      const given = positionals.join(" ").trim();
+      if (given === "") {
+        throw new Error('a cron expression is required (quote it, e.g. "*/5 * * * *")');
+      }
+      const expression = values.text ? cronFromText(given) : given;
+      const one = explain(expression, timeZone, fromMs);
+      if (values.text) {
+        one.md = `> "${given}" -> \`${expression}\`\n\n${one.md}`;
+        one.json = { text: given, ...one.json };
+      }
+      output = format === "json" ? JSON.stringify(one.json, null, 2) + "\n" : one.md;
+    }
   } catch (err) {
     process.stderr.write(`error: ${(err as Error).message}\n`);
     return 1;
   }
-
-  const runs = nextRuns(spec, fromMs, count, timeZone);
-  const output =
-    format === "json"
-      ? renderJson(expression, spec, timeZone, runs)
-      : renderMarkdown(expression, spec, timeZone, runs, count, fromMs);
 
   if (values.output) {
     try {
@@ -155,3 +218,13 @@ main()
     process.stderr.write(`error: ${(err as Error).message}\n`);
     process.exitCode = 1;
   });
+
+/** A workflow file, or every .yml/.yaml file in a folder (sorted). */
+async function workflowFiles(path: string): Promise<string[]> {
+  const info = await stat(path).catch(() => {
+    throw new Error(`cannot read "${path}"`);
+  });
+  if (!info.isDirectory()) return [path];
+  const names = (await readdir(path)).filter((n) => /\.ya?ml$/i.test(n)).sort();
+  return names.map((n) => join(path, n));
+}

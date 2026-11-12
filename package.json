@@ -1,6 +1,6 @@
 {
   "name": "@printemps-tokyo/cronpeek",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Explain a cron expression and show its next run times. Zero-dependency CLI.",
   "type": "module",
   "license": "MIT",
