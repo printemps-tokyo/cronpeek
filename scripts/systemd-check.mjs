@@ -36,7 +36,9 @@ for (const cron of CASES) {
       ["calendar", `--iterations=${COUNT}`, `--base-time=${BASE}`, event],
       { encoding: "utf8" },
     );
-    for (const m of out.matchAll(/(?:Next elapse|Iter\. #\d+): \w{3} (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC/g)) {
+    // Every elapse line names its time as "Thu 2026-11-12 09:00:00 UTC";
+    // the labels differ between systemd versions, so only the times count.
+    for (const m of out.matchAll(/\b[A-Z][a-z]{2} (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) UTC\b/g)) {
       got.push(m[1]);
     }
   }
